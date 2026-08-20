@@ -1,121 +1,117 @@
-import streamlit as st
-import pandas as pd
 import base64
 import json
 import os
+
+import pandas as pd
+import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# 1. Ładowanie klucza z sejfu (.env)
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+people = ["Mikołaj", "Zuzia", "Rudy", "Pawko"]
 
-# 2. Ustawienia interfejsu
-st.set_page_config(page_title="Paragonator 3000", layout="centered")
-osoby = ["Mikołaj", "Zuzia", "Rudy", "Pawko"]
-
-st.title("💸 Paragonator 3000")
-st.write("Rozliczaj paragony bez wstawania z łóżka.")
+st.set_page_config(page_title="Paragonator", page_icon="💸", layout="centered")
+st.title("💸 Paragonator")
+st.write("A simple way to split shared expenses.")
 st.markdown("---")
 
-# 3. Pamięć podręczna (OCHRONA TWOJEGO PORTFELA)
-# Dzięki temu kod wyśle zapytanie do AI tylko raz dla danego paragonu
-if 'produkty_z_ai' not in st.session_state:
-    st.session_state['produkty_z_ai'] = None
+if "products_from_ai" not in st.session_state:
+    st.session_state["products_from_ai"] = None
 
-# 4. Wgrywanie zdjęcia paragonu prosto z telefonu/komputera
-plik_paragonu = st.file_uploader("Wgraj zdjęcie paragonu", type=['jpg', 'jpeg', 'png'])
+receipt_file = st.file_uploader(
+    "Upload a receipt photo",
+    type=["jpg", "jpeg", "png"],
+    help="Supported formats: JPG, JPEG and PNG.",
+)
 
-if plik_paragonu is not None:
-    # Wyświetlamy zdjęcie, żebyś widział co wrzuciłeśgpt-4o-mini
-    st.image(plik_paragonu, caption="Twój paragon", use_container_width=True)
-    
-    if st.button("Odczytaj AI 🤖", type="primary"):
-        with st.spinner("Szef kuchni czyta dane... to potrwa kilka sekund."):
-            # Zamiana wgranego pliku na format dla AI (Base64)
-            base64_image = base64.b64encode(plik_paragonu.getvalue()).decode('utf-8')
-            
-            # Zapytanie do modelu - WERSJA PRO
+if receipt_file is not None:
+    st.image(receipt_file, caption="Your receipt", use_container_width=True)
+
+    if st.button("Read products", type="primary"):
+        with st.spinner("Analyzing the receipt. This may take a few seconds."):
+            base64_image = base64.b64encode(receipt_file.getvalue()).decode("utf-8")
             response = client.chat.completions.create(
-                model="gpt-4o", # ZMIANA: Używamy pełnego, inteligentnego modelu
-                response_format={ "type": "json_object" },
+                model="gpt-4o",
+                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "user",
                         "content": [
                             {
-                                "type": "text", 
-                                "text": """Jesteś głównym księgowym analizującym polskie paragony sklepowe (Biedronka, Lidl, Auchan). 
-                                    Zwróć plik JSON, który zawiera listę 'produkty', gdzie każdy produkt ma 'nazwa' i 'cena'.
+                                "type": "text",
+                                "text": """You are an accountant analyzing Polish supermarket receipts (Biedronka, Lidl, Auchan).
+                                    Return a JSON object containing a list called 'products', where each product has a 'name' and a 'price'.
                                     
-                                    ZASADY KRYTYCZNE, KTÓRYCH MUSISZ PRZESTRZEGAĆ:
-                                    1. Odczytuj nazwy precyzyjnie, omijając śmieciowe ciągi znaków.
-                                    2. RABATY I OPUSTY: Jeśli pod produktem widzisz pozycję typu "Rabat", "Opust" lub ujemną kwotę, MUSISZ odjąć tę wartość od ceny głównej produktu nad nim. Zwróć tylko JEDNĄ, ostateczną cenę po rabacie.
-                                    3. Nigdy nie dodawaj opustu jako osobnego produktu na liście!
-                                    4. Ignoruj sumy końcowe (np. "SUMA PLN", "Gotówka", "Reszta", "Kwota VAT").
-                                    5. Cena musi być dokładną liczbą zmiennoprzecinkową (np. 14.99)."""
+                                    CRITICAL RULES:
+                                    1. Read product names precisely and ignore garbage text.
+                                    2. DISCOUNTS AND REBATES: If you see a line such as "Discount", "Rebate", or a negative amount below a product, subtract it from the product's main price. Return only one final price after the discount.
+                                    3. Never include a discount or rebate as a separate product.
+                                    4. Ignore final totals such as "TOTAL PLN", "Cash", "Change", or "VAT amount".
+                                    5. Each price must be an exact floating-point number, for example 14.99.""",
                             },
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
+                        ],
                     }
-                ]
+                ],
             )
-            
-            wynik = json.loads(response.choices[0].message.content)
-            # Zapisujemy do pamięci Streamlit!
-            st.session_state['produkty_z_ai'] = wynik.get('produkty', [])
-            st.success("Odczytano paragon!")
+            result = json.loads(response.choices[0].message.content)
+            st.session_state["products_from_ai"] = result.get("products", [])
+            st.success("Products have been read.")
 
-# 5. Moduł klikania i rozliczeń (Aktywuje się dopiero, gdy AI zwróci dane)
-if st.session_state['produkty_z_ai'] is not None:
-    st.subheader("🧾 Rozliczenie")
-    rozliczenia = []
-    
-    # Kto założył kasę w Biedrze?
-    kto_placil = st.radio("Kto zapłacił za ten paragon?", osoby, horizontal=True)
-    st.write("### Lista produktów:")
-    
-    # Lecimy z produktami
-    for prod_idx, produkt in enumerate(st.session_state['produkty_z_ai']):
+if st.session_state["products_from_ai"] is not None:
+    st.subheader("🧾 Expense split")
+    settlements = []
+    payer = st.radio("Who paid for the receipt?", people, horizontal=True)
+    st.write("### Products")
+
+    for product_index, product in enumerate(st.session_state["products_from_ai"]):
         col1, col2 = st.columns([1, 2])
-        
+
         with col1:
-            st.markdown(f"**{produkt['nazwa']}**")
-            st.markdown(f"*{produkt['cena']} zł*")
-            
+            st.markdown(f"**{product['name']}**")
+            st.markdown(f"*{product['price']:.2f} PLN*")
+
         with col2:
-            st.write("Dla kogo?")
+            st.write("Who shared it?")
             chk_cols = st.columns(4)
-            zaznaczeni = []
-            
-            for i, osoba in enumerate(osoby):
-                # Unikalny klucz dla każdego checkboxa
-                if chk_cols[i].checkbox(osoba, key=f"chk_{prod_idx}_{osoba}"):
-                    zaznaczeni.append(osoba)
-                    
-        # Matematyka w tle
-        if zaznaczeni:
-            kwota_na_glowe = produkt['cena'] / len(zaznaczeni)
-            for dluznik in zaznaczeni:
-                if dluznik != kto_placil: 
-                    rozliczenia.append({
-                        "Kto wisi": dluznik,
-                        "Komu wisi": kto_placil,
-                        "Za co": produkt['nazwa'],
-                        "Kwota": kwota_na_glowe
-                    })
+            selected_people = []
+
+            for i, person in enumerate(people):
+                if chk_cols[i].checkbox(person, key=f"check_{product_index}_{person}"):
+                    selected_people.append(person)
+
+        if selected_people:
+            share = product["price"] / len(selected_people)
+            for debtor in selected_people:
+                if debtor != payer:
+                    settlements.append(
+                        {
+                            "Debtor": debtor,
+                            "Paid by": payer,
+                            "Item": product["name"],
+                            "Amount": share,
+                        }
+                    )
         st.markdown("---")
 
-    st.write("### 📊 Finał")
-    if st.button("Podsumuj i Zapisz (Gotowe do Excela)", type="primary"):
-        if rozliczenia:
-            df = pd.DataFrame(rozliczenia)
-            # Grupujemy długi
-            podsumowanie = df.groupby(["Kto wisi", "Komu wisi"])['Kwota'].sum().reset_index()
-            # Zaokrąglamy grosze
-            podsumowanie['Kwota'] = podsumowanie['Kwota'].round(2)
-            
-            st.success("Matematyka zrobiona! Oto wyniki:")
-            st.dataframe(podsumowanie, use_container_width=True)
+    st.write("### 📊 Summary")
+    if st.button("Calculate settlement", type="primary"):
+        if settlements:
+            df = pd.DataFrame(settlements)
+            summary = (
+                df.groupby(["Debtor", "Paid by"])["Amount"]
+                .sum()
+                .reset_index()
+            )
+            summary["Amount"] = summary["Amount"].round(2)
+
+            st.success("The settlement is ready.")
+            st.dataframe(summary, use_container_width=True)
         else:
-            st.warning("Nikogo nie zaznaczono przy żadnym produkcie. Nikt nikomu nic nie wisi!")
+            st.warning("Assign at least one product to someone to calculate the settlement.")
