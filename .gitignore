@@ -1,0 +1,11 @@
+# Zmienne środowiskowe i sekrety (TO CHRONI TWÓJ HAJS)
+.env
+
+# Śmieci generowane przez Pythona
+__pycache__/
+*.pyc
+*.pyo
+
+# Środowisko wirtualne (jeśli kiedyś założysz)
+venv/
+env/
